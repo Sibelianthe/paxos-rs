@@ -189,4 +189,15 @@ mod tests {
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
+
+    #[test]
+    fn it_serializes_command_promise() {
+        let json = r#""#;
+        let v = vec![(0u64, Ballot(123_u32, 345_u32), "hello".into())];
+        let payload = (42, Ballot(123_u32, 345_u32), v);
+
+        let command = TestCommand::Promise { payload };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
 }
