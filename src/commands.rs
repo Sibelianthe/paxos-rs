@@ -173,7 +173,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_serializes_command_proposal() {
-        let json = r#""#;
+        let json = r#"{"messageName":"Proposal","payload":[]}"#;
 
         let command = TestCommand::Proposal { payload: "".into() };
         let serialized_command = serde_json::to_string(&command).unwrap();
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn it_serializes_command_prepare() {
-        let json = r#""#;
+        let json = r#"{"messageName":"Prepare","payload":[123,345]}"#;
         let ballot = Ballot(123_u32, 345_u32);
 
         let command = TestCommand::Prepare { payload: ballot };
@@ -192,11 +192,64 @@ mod tests {
 
     #[test]
     fn it_serializes_command_promise() {
-        let json = r#""#;
+        let json = r#"{"messageName":"Promise","payload":[42,[123,345],[[0,[123,345],[104,101,108,108,111]]]]}"#;
         let v = vec![(0u64, Ballot(123_u32, 345_u32), "hello".into())];
         let payload = (42, Ballot(123_u32, 345_u32), v);
 
         let command = TestCommand::Promise { payload };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_accept() {
+        let json = r#"{"messageName":"Accept","payload":[[123,345],[[0,[104,101,108,108,111]]]]}"#;
+        let v = vec![(0u64, "hello".into())];
+        let payload = (Ballot(123_u32, 345_u32), v);
+
+        let command = TestCommand::Accept { payload };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_reject() {
+        let json = r#"{"messageName":"Reject","payload":[13,[123,345],[123,345]]}"#;
+        let ballot = Ballot(123_u32, 345_u32);
+
+        let command = TestCommand::Reject { payload: (13, ballot, ballot) };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_accepted() {
+        let json = r#"{"messageName":"Accepted","payload":[13,[123,345],[15]]}"#;
+        let v = vec![15_u64];
+        let ballot = Ballot(123_u32, 345_u32);
+
+        let command = TestCommand::Accepted { payload: (13, ballot, v) };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_resolution() {
+        let json = r#"{"messageName":"Resolution","payload":[[123,345],[[15,[]]]]}"#;
+        let v = vec![(15_u64, "".into())];
+        let ballot = Ballot(123_u32, 345_u32);
+
+        let command = TestCommand::Resolution { payload: (ballot, v) };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_catchup() {
+        let json = r#"{"messageName":"Catchup","payload":[16,[444]]}"#;
+        let v = vec![444_u64];
+
+        let command = TestCommand::Catchup { payload: (16, v) };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
