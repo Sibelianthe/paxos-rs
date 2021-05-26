@@ -192,3 +192,26 @@ pub struct Accepted(NodeId, Ballot, Vec<Slot>);
 pub struct Resolution(Ballot, Vec<(Slot, Bytes)>);
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Catchup(NodeId, Vec<Slot>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn it_serializes_command_proposal() {
+        let json = r#""#;
+
+        let command = TestCommand::Proposal(Proposal { value: "".into() });
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+
+    #[test]
+    fn it_serializes_command_prepare() {
+        let json = r#""#;
+        let ballot = Ballot(123_u32, 345_u32);
+
+        let command = TestCommand::Prepare(ballot);
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        assert_eq!(&serialized_command, json);
+    }
+}
