@@ -39,7 +39,7 @@ mod window;
 
 use std::cmp;
 
-pub use commands::{Command, Receiver, Transport};
+pub use commands::{Command, Receiver, TestCommand, Transport};
 pub use config::{Configuration, NodeMetadata};
 pub use node::Node;
 use serde::{Deserialize, Serialize};

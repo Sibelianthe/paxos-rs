@@ -126,3 +126,69 @@ pub enum Command {
     /// values.
     Catchup(NodeId, Vec<Slot>),
 }
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "messageName")]
+/// RPC commands sent between replicas
+pub enum TestCommand {
+    /// Propose a value
+    Proposal(Proposal),
+
+    /// Phase 1a PREPARE message containing the proposed ballot
+    Prepare(Ballot),
+
+    /// Phase 1b PROMISE message containing the node
+    /// that generated the promise, the ballot promised and all accepted
+    /// values within the open window.
+    Promise(Promise),
+
+    /// Phase 2a ACCEPT message that contains the the slot, proposed
+    /// ballot and value of the proposal. The ballot contains the node of
+    /// the leader of the slot.
+    Accept(Accept),
+
+    /// REJECT a peer's previous message containing a higher ballot that
+    /// preempts either a Phase 1a (PREPARE) for Phase 2a (ACCEPT) message.
+    Reject(Reject),
+
+    /// Phase 2b ACCEPTED message containing the acceptor that has
+    /// accepted the slot's proposal along with the ballot that generated
+    /// the slot.
+    Accepted(Accepted),
+
+    /// Resolution of a slot that has been accepted by a
+    /// majority of acceptors.
+    ///
+    /// NOTE: Resolutions may arrive out-of-order. No guarantees are made on
+    /// slot order.
+    Resolution(Resolution),
+
+    /// Request sent to a distinguished learner to catch up to latest slot
+    /// values.
+    Catchup(Catchup),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Proposal {
+    value: Bytes,
+}
+
+impl From<&'static str> for Proposal {
+    fn from(origin: &'static str) -> Self {
+        let bytes = origin.into();
+        Proposal { value: bytes }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Promise(NodeId, Ballot, Vec<(Slot, Ballot, Bytes)>);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Accept(Ballot, Vec<(Slot, Bytes)>);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Reject(NodeId, Ballot, Ballot);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Accepted(NodeId, Ballot, Vec<Slot>);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Resolution(Ballot, Vec<(Slot, Bytes)>);
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Catchup(NodeId, Vec<Slot>);
