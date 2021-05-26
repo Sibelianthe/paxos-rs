@@ -128,70 +128,45 @@ pub enum Command {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(tag = "messageName")]
 /// RPC commands sent between replicas
+#[serde(tag = "messageName")]
 pub enum TestCommand {
     /// Propose a value
-    Proposal(Proposal),
+    Proposal { payload: Bytes },
 
     /// Phase 1a PREPARE message containing the proposed ballot
-    Prepare(Ballot),
+    Prepare { payload: Ballot },
 
     /// Phase 1b PROMISE message containing the node
     /// that generated the promise, the ballot promised and all accepted
     /// values within the open window.
-    Promise(Promise),
+    Promise { payload: (NodeId, Ballot, Vec<(Slot, Ballot, Bytes)>) },
 
     /// Phase 2a ACCEPT message that contains the the slot, proposed
     /// ballot and value of the proposal. The ballot contains the node of
     /// the leader of the slot.
-    Accept(Accept),
+    Accept { payload: (Ballot, Vec<(Slot, Bytes)>) },
 
     /// REJECT a peer's previous message containing a higher ballot that
     /// preempts either a Phase 1a (PREPARE) for Phase 2a (ACCEPT) message.
-    Reject(Reject),
+    Reject { payload: (NodeId, Ballot, Ballot) },
 
     /// Phase 2b ACCEPTED message containing the acceptor that has
     /// accepted the slot's proposal along with the ballot that generated
     /// the slot.
-    Accepted(Accepted),
+    Accepted { payload: (NodeId, Ballot, Vec<Slot>) },
 
     /// Resolution of a slot that has been accepted by a
     /// majority of acceptors.
     ///
     /// NOTE: Resolutions may arrive out-of-order. No guarantees are made on
     /// slot order.
-    Resolution(Resolution),
+    Resolution { payload: (Ballot, Vec<(Slot, Bytes)>) },
 
     /// Request sent to a distinguished learner to catch up to latest slot
     /// values.
-    Catchup(Catchup),
+    Catchup { payload: (NodeId, Vec<Slot>) },
 }
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Proposal {
-    value: Bytes,
-}
-
-impl From<&'static str> for Proposal {
-    fn from(origin: &'static str) -> Self {
-        let bytes = origin.into();
-        Proposal { value: bytes }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Promise(NodeId, Ballot, Vec<(Slot, Ballot, Bytes)>);
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Accept(Ballot, Vec<(Slot, Bytes)>);
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Reject(NodeId, Ballot, Ballot);
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Accepted(NodeId, Ballot, Vec<Slot>);
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Resolution(Ballot, Vec<(Slot, Bytes)>);
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Catchup(NodeId, Vec<Slot>);
 
 #[cfg(test)]
 mod tests {
@@ -200,7 +175,7 @@ mod tests {
     fn it_serializes_command_proposal() {
         let json = r#""#;
 
-        let command = TestCommand::Proposal(Proposal { value: "".into() });
+        let command = TestCommand::Proposal { payload: "".into() };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -210,7 +185,7 @@ mod tests {
         let json = r#""#;
         let ballot = Ballot(123_u32, 345_u32);
 
-        let command = TestCommand::Prepare(ballot);
+        let command = TestCommand::Prepare { payload: ballot };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
