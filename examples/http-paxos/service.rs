@@ -7,8 +7,8 @@ use bytes::Bytes;
 use futures_util::future::{join, Join};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use paxos::{
-    liveness::Liveness, statemachine::StateMachineReplica, Command, Configuration, Node, Receiver,
-    Replica,
+    liveness::Liveness, statemachine::StateMachineReplica, Command, CommandMetas, Configuration,
+    Node, Receiver, Replica,
 };
 use rand::random;
 use std::{sync::Arc, time::Duration};
@@ -46,7 +46,7 @@ impl Handler {
             let mut ticks = interval(Duration::from_millis(100));
             loop {
                 ticks.tick().await;
-                replica_arch_timer.lock().await.tick();
+                replica_arch_timer.lock().await.tick(CommandMetas { message_id: 1_f64 });
             }
         });
 
@@ -70,9 +70,12 @@ impl Handler {
                 let request_id = random();
                 let receiver = self.store.register_set(request_id);
                 {
-                    self.replica.lock().await.receive(Command::Proposal { payload: 
-                        KvCommand::Set { request_id, key, value }.into(),
-                    });
+                    self.replica.lock().await.receive(
+                        Command::Proposal {
+                            payload: KvCommand::Set { request_id, key, value }.into(),
+                        },
+                        CommandMetas { message_id: 1_f64 },
+                    );
                 }
 
                 match receiver.await {
@@ -88,10 +91,10 @@ impl Handler {
                 let request_id = random::<u64>();
                 let receiver = self.store.register_get(request_id);
                 {
-                    self.replica
-                        .lock()
-                        .await
-                        .receive(Command::Proposal { payload: (KvCommand::Get { request_id, key }.into())});
+                    self.replica.lock().await.receive(
+                        Command::Proposal { payload: (KvCommand::Get { request_id, key }.into()) },
+                        CommandMetas { message_id: 1_f64 },
+                    );
                 }
 
                 match receiver.await {

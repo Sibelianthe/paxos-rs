@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Command, Receiver},
+    commands::{Command, CommandMetas, Receiver},
     window::DecisionSet,
     Replica,
 };
@@ -23,19 +23,19 @@ impl<R: Replica> Liveness<R> {
 }
 
 impl<R: Replica> Receiver for Liveness<R> {
-    fn receive(&mut self, cmd: Command) {
+    fn receive(&mut self, cmd: Command, cmd_metas: CommandMetas) {
         // Bump leadership timeout if the command is not a catchup or proposal
         match &cmd {
             &Command::Proposal { payload: _} | &Command::Catchup { payload: (..)} => {}
             _ => self.leader_election.bump(),
         }
 
-        self.inner.receive(cmd);
+        self.inner.receive(cmd, cmd_metas);
     }
 }
 
 impl<R: Replica> Replica for Liveness<R> {
-    fn tick(&mut self) {
+    fn tick(&mut self, cmd_metas: CommandMetas) {
         let lapsed = if self.inner.is_leader() {
             self.leader_election.near()
         } else {
@@ -44,15 +44,15 @@ impl<R: Replica> Replica for Liveness<R> {
 
         if lapsed {
             info!("Leadership timeout lapsed, proposing leadership");
-            self.inner.propose_leadership();
+            self.inner.propose_leadership(cmd_metas.clone());
             self.leader_election.clear();
         }
 
-        self.inner.tick();
+        self.inner.tick(cmd_metas);
     }
 
-    fn propose_leadership(&mut self) {
-        self.inner.propose_leadership();
+    fn propose_leadership(&mut self, cmd_metas: CommandMetas) {
+        self.inner.propose_leadership(cmd_metas);
     }
 
     fn is_leader(&self) -> bool {
@@ -114,7 +114,9 @@ mod tests {
     #[test]
     fn propose_does_not_bump_timeout() {
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Proposal { payload: ("123".into())});
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        live.receive(Command::Proposal { payload: ("123".into())}, cmd_metas);
 
         // does not bump leadership
         assert!(live.leader_election.latest_message.is_none());
@@ -124,32 +126,34 @@ mod tests {
     #[test]
     fn commands_bump_timeout() {
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Prepare { payload: (Ballot(2, 3))});
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        live.receive(Command::Prepare { payload: (Ballot(2, 3))}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Prepare { payload: (Ballot(2, 3))});
 
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Promise { payload: (0, Ballot(2, 3), vec![])});
+        live.receive(Command::Promise { payload: (0, Ballot(2, 3), vec![])}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Promise { payload: (0, Ballot(2, 3), vec![])});
 
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Reject { payload: (4, Ballot(0, 1), Ballot(4, 5))});
+        live.receive(Command::Reject { payload: (4, Ballot(0, 1), Ballot(4, 5))}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Reject { payload: (4, Ballot(0, 1), Ballot(4, 5))});
 
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Accept { payload: (Ballot(4, 5), vec![])});
+        live.receive(Command::Accept { payload: (Ballot(4, 5), vec![])}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Accept { payload: (Ballot(4, 5), vec![])});
 
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Accepted { payload: (5, Ballot(1, 2), vec![2, 3, 4])});
+        live.receive(Command::Accepted { payload: (5, Ballot(1, 2), vec![2, 3, 4])}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Accepted { payload: (5, Ballot(1, 2), vec![2, 3, 4])});
 
         let mut live = Liveness::new(Inner::default());
-        live.receive(Command::Resolution { payload: (Ballot(1, 2), vec![])});
+        live.receive(Command::Resolution { payload: (Ballot(1, 2), vec![])}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
         assert_eq!(live.inner.commands[0], Command::Resolution { payload: (Ballot(1, 2), vec![])});
     }
@@ -157,40 +161,44 @@ mod tests {
     #[test]
     fn tick_leader() {
         let mut live = Liveness::new(Inner::default());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         live.inner.leader = true;
         assert!(live.is_leader());
-        live.tick();
+        live.tick(cmd_metas.clone());
         assert!(!live.inner.proposed_leadership);
 
         // receive a message
-        live.receive(Command::Accepted { payload: (5, Ballot(1, 2), vec![2, 3, 4])});
-        live.tick();
+        live.receive(Command::Accepted { payload: (5, Ballot(1, 2), vec![2, 3, 4])}, cmd_metas.clone());
+        live.tick(cmd_metas.clone());
         assert!(!live.inner.proposed_leadership);
 
         // jump forward the timeout duration
         live.leader_election.fast_forward(Duration::from_secs(1));
 
-        live.tick();
+        live.tick(cmd_metas);
         assert!(live.inner.proposed_leadership);
     }
 
     #[test]
     fn tick_follower() {
         let mut live = Liveness::new(Inner::default());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         live.inner.leader = false;
         assert!(!live.is_leader());
-        live.tick();
+        live.tick(cmd_metas.clone());
         assert!(!live.inner.proposed_leadership);
 
         // receive a message
-        live.receive(Command::Resolution { payload: (Ballot(0, 1), vec![])});
-        live.tick();
+        live.receive(Command::Resolution { payload: (Ballot(0, 1), vec![])}, cmd_metas.clone());
+        live.tick(cmd_metas.clone());
         assert!(!live.inner.proposed_leadership);
 
         // jump forward the timeout duration
         live.leader_election.fast_forward(Duration::from_secs(2));
 
-        live.tick();
+        live.tick(cmd_metas);
         assert!(live.inner.proposed_leadership);
     }
 
@@ -202,13 +210,13 @@ mod tests {
     }
 
     impl Receiver for Inner {
-        fn receive(&mut self, cmd: Command) {
+        fn receive(&mut self, cmd: Command, _cmd_metas: CommandMetas) {
             self.commands.push(cmd);
         }
     }
 
     impl Replica for Inner {
-        fn propose_leadership(&mut self) {
+        fn propose_leadership(&mut self, _cmd_metas: CommandMetas) {
             self.proposed_leadership = true;
         }
 
@@ -216,7 +224,7 @@ mod tests {
             self.leader
         }
 
-        fn tick(&mut self) {}
+        fn tick(&mut self, _cmd_metas: CommandMetas) {}
         fn decisions(&self) -> DecisionSet {
             unimplemented!();
         }

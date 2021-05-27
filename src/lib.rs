@@ -39,7 +39,7 @@ mod window;
 
 use std::cmp;
 
-pub use commands::{Command, Receiver, Transport};
+pub use commands::{Command, Receiver, Transport, CommandMetas};
 pub use config::{Configuration, NodeMetadata};
 pub use node::Node;
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,7 @@ impl Ord for Ballot {
 
 pub trait Replica: Receiver {
     /// Proposes that the current node take over leadership
-    fn propose_leadership(&mut self);
+    fn propose_leadership(&mut self, cmd_metas: CommandMetas);
 
     /// Determines if the current node is the leader
     fn is_leader(&self) -> bool;
@@ -97,7 +97,7 @@ pub trait Replica: Receiver {
     fn decisions(&self) -> DecisionSet;
 
     /// Runs logic for a tick of an interval
-    fn tick(&mut self);
+    fn tick(&mut self, cmd_metas: CommandMetas);
 
     /// Configures the replica to re-establish leadership upon
     /// failure.

@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 /// resolved commands at the current replica
 pub trait Transport {
     /// Send a message to a single node
-    fn send(&mut self, node: NodeId, node_metadata: &NodeMetadata, command: Command);
+    fn send(&mut self, node: NodeId, node_metadata: &NodeMetadata, command: Command, command_metadata: CommandMetas);
 }
 
 /// Receiver of Paxos commands.
 pub trait Receiver {
     /// Receives a command and reacts accordingly
-    fn receive(&mut self, command: Command);
+    fn receive(&mut self, command: Command, cmd_metas: CommandMetas);
 }
 
 /// Receiver of Paxos commands.
@@ -20,112 +20,112 @@ pub trait Receiver {
 /// This is a convenience trait that breaks out reactors for each command.
 pub trait Commander {
     /// Receive a proposal
-    fn proposal(&mut self, val: Bytes);
+    fn proposal(&mut self, val: Bytes, cmd_metas: CommandMetas);
 
     /// Receive a Phase 1a PREPARE message containing the proposed ballot
-    fn prepare(&mut self, bal: Ballot);
+    fn prepare(&mut self, bal: Ballot, cmd_metas: CommandMetas);
 
     /// Receive a Phase 1b PROMISE message containing the node
     /// that generated the promise, the ballot promised and all accepted
     /// values within the open window.
-    fn promise(&mut self, node: NodeId, bal: Ballot, accepted: Vec<(Slot, Ballot, Bytes)>);
+    fn promise(&mut self, node: NodeId, bal: Ballot, accepted: Vec<(Slot, Ballot, Bytes)>, cmd_metas: CommandMetas);
 
     /// Receive a Phase 2a ACCEPT message that contains the the slot, proposed
     /// ballot and value of the proposal. The ballot contains the node of
     /// the leader of the slot.
-    fn accept(&mut self, bal: Ballot, slot_values: Vec<(Slot, Bytes)>);
+    fn accept(&mut self, bal: Ballot, slot_values: Vec<(Slot, Bytes)>, cmd_metas: CommandMetas);
 
     /// Receives a REJECT message from a peer containing a higher ballot that
     /// preempts either a Phase 1a (PREPARE) for Phase 2a (ACCEPT) message.
-    fn reject(&mut self, node: NodeId, proposed: Ballot, preempted: Ballot);
+    fn reject(&mut self, node: NodeId, proposed: Ballot, preempted: Ballot, cmd_metas: CommandMetas);
 
     /// Receives a Phase 2b ACCEPTED message containing the acceptor that has
     /// accepted the slot's proposal along with the ballot that generated
     /// the slot.
-    fn accepted(&mut self, node: NodeId, bal: Ballot, slots: Vec<Slot>);
+    fn accepted(&mut self, node: NodeId, bal: Ballot, slots: Vec<Slot>, cmd_metas: CommandMetas);
 
     /// Receives a final resolution of a slot that has been accepted by a
     /// majority of acceptors.
     ///
     /// NOTE: Resolutions may arrive out-of-order. No guarantees are made on
     /// slot order.
-    fn resolution(&mut self, bal: Ballot, values: Vec<(Slot, Bytes)>);
+    fn resolution(&mut self, bal: Ballot, values: Vec<(Slot, Bytes)>, cmd_metas: CommandMetas);
 
     /// Request sent to a distinguished learner to catch up to latest slot
     /// values.
-    fn catchup(&mut self, node: NodeId, slots: Vec<Slot>);
+    fn catchup(&mut self, node: NodeId, slots: Vec<Slot>, cmd_metas: CommandMetas);
 }
 
 impl<T: Commander> Receiver for T {
-    fn receive(&mut self, command: Command) {
+    fn receive(&mut self, command: Command, cmd_metas: CommandMetas) {
         match command {
             Command::Proposal { payload: val } => {
-                self.proposal(val);
+                self.proposal(val, cmd_metas);
             }
             Command::Prepare { payload: bal } => {
-                self.prepare(bal);
+                self.prepare(bal, cmd_metas);
             }
             Command::Promise { payload: (node, bal, accepted)} => {
-                self.promise(node, bal, accepted);
+                self.promise(node, bal, accepted, cmd_metas);
             }
             Command::Accept { payload: (bal, slot_vals)} => {
-                self.accept(bal, slot_vals);
+                self.accept(bal, slot_vals, cmd_metas);
             }
             Command::Reject { payload: (node, proposed, preempted)} => {
-                self.reject(node, proposed, preempted);
+                self.reject(node, proposed, preempted, cmd_metas);
             }
             Command::Accepted { payload: (node, bal, slots)} => {
-                self.accepted(node, bal, slots);
+                self.accepted(node, bal, slots, cmd_metas);
             }
             Command::Resolution { payload: (bal, slot_vals)} => {
-                self.resolution(bal, slot_vals);
+                self.resolution(bal, slot_vals, cmd_metas);
             }
             Command::Catchup { payload: (node, slots)} => {
-                self.catchup(node, slots);
+                self.catchup(node, slots, cmd_metas);
             }
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+// #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 /// RPC commands sent between replicas
-pub enum OrigCommand {
-    /// Propose a value
-    Proposal(Bytes),
+// pub enum OrigCommand {
+//     /// Propose a value
+//     Proposal(Bytes),
 
-    /// Phase 1a PREPARE message containing the proposed ballot
-    Prepare(Ballot),
+//     /// Phase 1a PREPARE message containing the proposed ballot
+//     Prepare(Ballot),
 
-    /// Phase 1b PROMISE message containing the node
-    /// that generated the promise, the ballot promised and all accepted
-    /// values within the open window.
-    Promise(NodeId, Ballot, Vec<(Slot, Ballot, Bytes)>),
+//     /// Phase 1b PROMISE message containing the node
+//     /// that generated the promise, the ballot promised and all accepted
+//     /// values within the open window.
+//     Promise(NodeId, Ballot, Vec<(Slot, Ballot, Bytes)>),
 
-    /// Phase 2a ACCEPT message that contains the the slot, proposed
-    /// ballot and value of the proposal. The ballot contains the node of
-    /// the leader of the slot.
-    Accept(Ballot, Vec<(Slot, Bytes)>),
+//     /// Phase 2a ACCEPT message that contains the the slot, proposed
+//     /// ballot and value of the proposal. The ballot contains the node of
+//     /// the leader of the slot.
+//     Accept(Ballot, Vec<(Slot, Bytes)>),
 
-    /// REJECT a peer's previous message containing a higher ballot that
-    /// preempts either a Phase 1a (PREPARE) for Phase 2a (ACCEPT) message.
-    Reject(NodeId, Ballot, Ballot),
+//     /// REJECT a peer's previous message containing a higher ballot that
+//     /// preempts either a Phase 1a (PREPARE) for Phase 2a (ACCEPT) message.
+//     Reject(NodeId, Ballot, Ballot),
 
-    /// Phase 2b ACCEPTED message containing the acceptor that has
-    /// accepted the slot's proposal along with the ballot that generated
-    /// the slot.
-    Accepted(NodeId, Ballot, Vec<Slot>),
+//     /// Phase 2b ACCEPTED message containing the acceptor that has
+//     /// accepted the slot's proposal along with the ballot that generated
+//     /// the slot.
+//     Accepted(NodeId, Ballot, Vec<Slot>),
 
-    /// Resolution of a slot that has been accepted by a
-    /// majority of acceptors.
-    ///
-    /// NOTE: Resolutions may arrive out-of-order. No guarantees are made on
-    /// slot order.
-    Resolution(Ballot, Vec<(Slot, Bytes)>),
+//     /// Resolution of a slot that has been accepted by a
+//     /// majority of acceptors.
+//     ///
+//     /// NOTE: Resolutions may arrive out-of-order. No guarantees are made on
+//     /// slot order.
+//     Resolution(Ballot, Vec<(Slot, Bytes)>),
 
-    /// Request sent to a distinguished learner to catch up to latest slot
-    /// values.
-    Catchup(NodeId, Vec<Slot>),
-}
+//     /// Request sent to a distinguished learner to catch up to latest slot
+//     /// values.
+//     Catchup(NodeId, Vec<Slot>),
+// }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 /// RPC commands sent between replicas
@@ -166,6 +166,11 @@ pub enum Command {
     /// Request sent to a distinguished learner to catch up to latest slot
     /// values.
     Catchup { payload: (NodeId, Vec<Slot>) },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommandMetas {
+    pub message_id: f64,
 }
 
 #[cfg(test)]

@@ -30,7 +30,7 @@ impl<T: Transport> Node<T> {
     }
 
     /// Broadcast ACCEPT messages once the proposer has phase 1 quorum
-    fn drive_accept(&mut self) {
+    fn drive_accept(&mut self, cmd_metas: CommandMetas) {
         if !self.proposer.state().is_leader() {
             return;
         }
@@ -73,12 +73,12 @@ impl<T: Transport> Node<T> {
 
         // send out the accepts
         if !accepts.is_empty() {
-            self.broadcast(Command::Accept { payload: (bal, accepts)});
+            self.broadcast(Command::Accept { payload: (bal, accepts)}, cmd_metas);
         }
     }
 
     /// Forwards pending proposals to the new leader
-    fn forward(&mut self) {
+    fn forward(&mut self, cmd_metas: CommandMetas) {
         if !self.proposer.state().is_follower() || self.proposer.is_proposal_queue_empty() {
             return;
         }
@@ -86,36 +86,36 @@ impl<T: Transport> Node<T> {
         let proposals = self.proposer.take_proposals();
         if let Some(Ballot(_, node)) = self.proposer.highest_observed_ballot() {
             for proposal in proposals.into_iter() {
-                self.send(node, Command::Proposal { payload: (proposal)});
+                self.send(node, Command::Proposal { payload: (proposal)}, cmd_metas.clone());
             }
         }
     }
 
     #[inline(always)]
-    fn send(&mut self, node: NodeId, cmd: Command) {
-        self.transport.send(node, &self.config[node], cmd)
+    fn send(&mut self, node: NodeId, cmd: Command, cmd_metas: CommandMetas) {
+        self.transport.send(node, &self.config[node], cmd, cmd_metas)
     }
 
     #[inline(always)]
-    fn broadcast(&mut self, cmd: Command) {
+    fn broadcast(&mut self, cmd: Command, cmd_metas: CommandMetas) {
         for node in self.config.peer_node_ids().into_iter() {
-            self.transport.send(node, &self.config[node], cmd.clone());
+            self.transport.send(node, &self.config[node], cmd.clone(), cmd_metas.clone());
         }
     }
 }
 
 impl<T: Transport> Commander for Node<T> {
-    fn proposal(&mut self, val: Bytes) {
+    fn proposal(&mut self, val: Bytes, cmd_metas: CommandMetas) {
         // redirect to the distinguished proposer or start PREPARE
         match *self.proposer.state() {
             ProposerState::Follower if self.proposer.highest_observed_ballot().is_none() => {
                 // no known proposers, go through prepare cycle
                 self.proposer.push_proposal(val);
-                self.propose_leadership();
+                self.propose_leadership(cmd_metas);
             }
             ProposerState::Follower => {
                 let leader_node = self.proposer.highest_observed_ballot().unwrap().1;
-                self.send(leader_node, Command::Proposal { payload: (val)});
+                self.send(leader_node, Command::Proposal { payload: (val)}, cmd_metas);
             }
             ProposerState::Candidate { .. } => {
                 // still waiting for promises, queue up the value
@@ -129,12 +129,12 @@ impl<T: Transport> Commander for Node<T> {
                     slot_ref.acceptor().notice_value(bal, val.clone());
                     slot_ref.slot()
                 };
-                self.broadcast(Command::Accept { payload: (bal, vec![(slot, val.clone())])});
+                self.broadcast(Command::Accept { payload: (bal, vec![(slot, val.clone())])}, cmd_metas);
             }
         }
     }
 
-    fn prepare(&mut self, bal: Ballot) {
+    fn prepare(&mut self, bal: Ballot, cmd_metas: CommandMetas) {
         self.proposer.observe_ballot(bal);
 
         let node_id = self.config.current();
@@ -154,6 +154,7 @@ impl<T: Transport> Commander for Node<T> {
                                 node,
                                 &self.config[node],
                                 Command::Reject { payload: (node_id, proposed, preempted)},
+                                cmd_metas,
                             );
                             return;
                         }
@@ -173,10 +174,10 @@ impl<T: Transport> Commander for Node<T> {
                 }
             }
         }
-        self.send(bal.1, Command::Promise { payload: (node_id, bal, accepted)});
+        self.send(bal.1, Command::Promise { payload: (node_id, bal, accepted)}, cmd_metas);
     }
 
-    fn promise(&mut self, node: NodeId, bal: Ballot, accepted: Vec<(Slot, Ballot, Bytes)>) {
+    fn promise(&mut self, node: NodeId, bal: Ballot, accepted: Vec<(Slot, Ballot, Bytes)>, cmd_metas: CommandMetas) {
         if !self.proposer.state().is_candidate() {
             return;
         }
@@ -197,10 +198,10 @@ impl<T: Transport> Commander for Node<T> {
         }
 
         // if we have phase 1 quorum, we can send out ACCEPT messages
-        self.drive_accept();
+        self.drive_accept(cmd_metas);
     }
 
-    fn accept(&mut self, bal: Ballot, slot_values: Vec<(Slot, Bytes)>) {
+    fn accept(&mut self, bal: Ballot, slot_values: Vec<(Slot, Bytes)>, cmd_metas: CommandMetas) {
         self.proposer.observe_ballot(bal);
 
         let current_node = self.config.current();
@@ -223,23 +224,25 @@ impl<T: Transport> Commander for Node<T> {
                     accepted_slots.push(slot);
                 }
                 AcceptResponse::Reject { proposed, preempted } => {
-                    self.send(bal.1, Command::Reject { payload: (current_node, proposed, preempted)});
+                    self.send(bal.1, Command::Reject { payload: (current_node, proposed, preempted)}, 
+                    cmd_metas,
+                );
                     return;
                 }
                 _ => {}
             }
         }
 
-        self.send(bal.1, Command::Accepted { payload: (current_node, bal, accepted_slots)});
+        self.send(bal.1, Command::Accepted { payload: (current_node, bal, accepted_slots)}, cmd_metas);
     }
 
-    fn reject(&mut self, node: NodeId, proposed: Ballot, promised: Ballot) {
+    fn reject(&mut self, node: NodeId, proposed: Ballot, promised: Ballot, cmd_metas: CommandMetas) {
         // reject preempted ballot within the proposer
         self.proposer.receive_reject(node, proposed, promised);
-        self.forward();
+        self.forward(cmd_metas);
     }
 
-    fn accepted(&mut self, node: NodeId, bal: Ballot, slots: Vec<Slot>) {
+    fn accepted(&mut self, node: NodeId, bal: Ballot, slots: Vec<Slot>, cmd_metas: CommandMetas) {
         self.proposer.observe_ballot(bal);
 
         // notify each slot of the accepted, collecting resolutions
@@ -263,11 +266,11 @@ impl<T: Transport> Commander for Node<T> {
 
         if !resolutions.is_empty() {
             resolutions.shrink_to_fit();
-            self.broadcast(Command::Resolution { payload: (bal, resolutions)});
+            self.broadcast(Command::Resolution { payload: (bal, resolutions)}, cmd_metas);
         }
     }
 
-    fn resolution(&mut self, bal: Ballot, slot_vals: Vec<(Slot, Bytes)>) {
+    fn resolution(&mut self, bal: Ballot, slot_vals: Vec<(Slot, Bytes)>, cmd_metas: CommandMetas) {
         self.proposer.observe_ballot(bal);
 
         for (slot, val) in slot_vals.into_iter() {
@@ -295,11 +298,11 @@ impl<T: Transport> Commander for Node<T> {
             trace!("Sending catchup for slots {:?}", slots);
             let leader = self.proposer.highest_observed_ballot().unwrap().1;
             let node = self.config.current();
-            self.send(leader, Command::Catchup { payload: (node, slots)});
+            self.send(leader, Command::Catchup { payload: (node, slots)}, cmd_metas);
         }
     }
 
-    fn catchup(&mut self, node: NodeId, mut slots: Vec<Slot>) {
+    fn catchup(&mut self, node: NodeId, mut slots: Vec<Slot>, cmd_metas: CommandMetas) {
         // TODO: do we want to redirect at this point? Dropping is certainly safer
         if !self.is_leader() {
             return;
@@ -321,6 +324,7 @@ impl<T: Transport> Commander for Node<T> {
                             node,
                             &self.config[node],
                             Command::Resolution { payload: (b, send_buf)},
+                            cmd_metas.clone(),
                         );
                     }
                 }
@@ -331,22 +335,22 @@ impl<T: Transport> Commander for Node<T> {
         }
 
         if !buf.is_empty() && run_bal.is_some() {
-            self.send(node, Command::Resolution { payload: (run_bal.unwrap(), buf)});
+            self.send(node, Command::Resolution { payload: (run_bal.unwrap(), buf)}, cmd_metas);
         }
     }
 }
 
 impl<T: Transport> Replica for Node<T> {
-    fn propose_leadership(&mut self) {
+    fn propose_leadership(&mut self, cmd_metas: CommandMetas) {
         match *self.proposer.state() {
-            ProposerState::Candidate { proposal, .. } => self.broadcast(Command::Prepare { payload: (proposal)}),
+            ProposerState::Candidate { proposal, .. } => self.broadcast(Command::Prepare { payload: (proposal)}, cmd_metas),
             ProposerState::Follower => {
                 let bal = self.proposer.prepare();
-                self.broadcast(Command::Prepare { payload: (bal)});
+                self.broadcast(Command::Prepare { payload: (bal)}, cmd_metas);
             }
             ProposerState::Leader { proposal } => {
                 // TODO: do we want a special sync here? What about periodic bumping ballot?
-                self.broadcast(Command::Accept { payload: (proposal, vec![])});
+                self.broadcast(Command::Accept { payload: (proposal, vec![])}, cmd_metas);
             }
         }
     }
@@ -355,7 +359,7 @@ impl<T: Transport> Replica for Node<T> {
         self.proposer.state().is_leader()
     }
 
-    fn tick(&mut self) {}
+    fn tick(&mut self, _cmd_metas: CommandMetas) {}
 
     fn decisions(&self) -> DecisionSet {
         self.window.decisions()
@@ -385,9 +389,10 @@ mod tests {
     #[test]
     fn node_proposal() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1_f64 };
 
         // sent with no existing proposal, kickstarts phase 1
-        replica.proposal("123".into());
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[0]);
         assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[1]);
@@ -395,7 +400,7 @@ mod tests {
         assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[3]);
         replica.transport.clear();
 
-        replica.proposal("456".into());
+        replica.proposal("456".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         assert!(replica.transport[0].is_empty());
         assert!(replica.transport[1].is_empty());
@@ -408,11 +413,12 @@ mod tests {
     #[test]
     fn node_proposal_redirection() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.prepare(Ballot(0, 3));
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+        replica.prepare(Ballot(0, 3), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 3)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
-        replica.proposal("123".into());
+        replica.proposal("123".into(), cmd_metas.clone());
         assert!(replica.transport[0].is_empty());
         assert!(replica.transport[1].is_empty());
         assert!(replica.transport[2].is_empty());
@@ -424,8 +430,9 @@ mod tests {
     #[test]
     fn node_prepare() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
 
-        replica.prepare(Ballot(1, 0));
+        replica.prepare(Ballot(1, 0), cmd_metas.clone());
         assert_eq!(Some(Ballot(1, 0)), replica.proposer.highest_observed_ballot());
         assert_eq!(&[Command::Promise { payload: (4, Ballot(1, 0), Vec::new())}], &replica.transport[0]);
         assert!(&replica.transport[1].is_empty());
@@ -433,7 +440,7 @@ mod tests {
         assert!(&replica.transport[3].is_empty());
         replica.transport.clear();
 
-        replica.prepare(Ballot(0, 2));
+        replica.prepare(Ballot(0, 2), cmd_metas.clone());
         assert_eq!(Some(Ballot(1, 0)), replica.proposer.highest_observed_ballot());
         assert!(&replica.transport[0].is_empty());
         assert!(&replica.transport[1].is_empty());
@@ -446,15 +453,17 @@ mod tests {
     #[test]
     fn node_promise_without_existing_accepted_value() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.proposal("123".into());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
         // replica needs 2 more promises to achieve Phase 1 Quorum
-        replica.promise(0, Ballot(0, 4), Vec::new());
+        replica.promise(0, Ballot(0, 4), Vec::new(), cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
 
-        replica.promise(2, Ballot(0, 4), Vec::new());
+        replica.promise(2, Ballot(0, 4), Vec::new(), cmd_metas.clone());
 
         (0..4).for_each(|i| {
             assert_eq!(
@@ -469,15 +478,17 @@ mod tests {
     #[test]
     fn node_promise_with_existing_accepted_value() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.proposal("123".into());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
         // replica needs 2 more promises to achieve Phase 1 Quorum
-        replica.promise(1, Ballot(0, 4), vec![(0, Ballot(0, 0), "456".into())]);
+        replica.promise(1, Ballot(0, 4), vec![(0, Ballot(0, 0), "456".into())], cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
 
-        replica.promise(2, Ballot(0, 4), vec![]);
+        replica.promise(2, Ballot(0, 4), vec![], cmd_metas.clone());
 
         (0..4).for_each(|i| {
             assert_eq!(
@@ -492,15 +503,17 @@ mod tests {
     #[test]
     fn node_promise_with_slot_holes() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.proposal("123".into());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
         // replica needs 2 more promises to achieve Phase 1 Quorum
-        replica.promise(1, Ballot(0, 4), vec![(2, Ballot(0, 0), "456".into())]);
+        replica.promise(1, Ballot(0, 4), vec![(2, Ballot(0, 0), "456".into())], cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
 
-        replica.promise(2, Ballot(0, 4), vec![]);
+        replica.promise(2, Ballot(0, 4), vec![], cmd_metas.clone());
 
         (0..4).for_each(|i| {
             assert_eq!(
@@ -523,25 +536,27 @@ mod tests {
     #[test]
     fn node_accept() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.prepare(Ballot(8, 2));
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.prepare(Ballot(8, 2), cmd_metas.clone());
         assert_eq!(Some(Ballot(8, 2)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
         // test rejection first for bal < proposer.highest_observed_ballot
-        replica.accept(Ballot(1, 1), vec![(0, "123".into())]);
+        replica.accept(Ballot(1, 1), vec![(0, "123".into())], cmd_metas.clone());
         assert_eq!(&[Command::Reject { payload: (4, Ballot(1, 1), Ballot(8, 2))}], &replica.transport[1]);
         replica.transport.clear();
 
         // test replying with accepted message when bal =
         // proposer.highest_observed_ballot
-        replica.accept(Ballot(8, 2), vec![(0, "456".into())]);
+        replica.accept(Ballot(8, 2), vec![(0, "456".into())], cmd_metas.clone());
         assert_eq!(Some(Ballot(8, 2)), replica.proposer.highest_observed_ballot());
         assert_eq!(&[Command::Accepted { payload: (4, Ballot(8, 2), vec![0])}], &replica.transport[2]);
         replica.transport.clear();
 
         // test replying with accepted message when bal >
         // proposer.highest_observed_ballot
-        replica.accept(Ballot(9, 2), vec![(0, "789".into())]);
+        replica.accept(Ballot(9, 2), vec![(0, "789".into())], cmd_metas.clone());
         assert_eq!(Some(Ballot(9, 2)), replica.proposer.highest_observed_ballot());
         assert_eq!(&[Command::Accepted { payload: (4, Ballot(9, 2), vec![0])}], &replica.transport[2]);
 
@@ -549,7 +564,7 @@ mod tests {
         replica.transport.clear();
 
         // try with multiple accepts
-        replica.accept(Ballot(10, 2), vec![(1, "foo".into()), (2, "bar".into())]);
+        replica.accept(Ballot(10, 2), vec![(1, "foo".into()), (2, "bar".into())], cmd_metas.clone());
         assert_eq!(Some(Ballot(10, 2)), replica.proposer.highest_observed_ballot());
         assert_eq!(&[Command::Accepted { payload: (4, Ballot(10, 2), vec![1, 2])}], &replica.transport[2]);
     }
@@ -557,11 +572,13 @@ mod tests {
     #[test]
     fn node_reject() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.proposal("123".into());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
 
-        replica.reject(2, Ballot(0, 4), Ballot(5, 3));
+        replica.reject(2, Ballot(0, 4), Ballot(5, 3), cmd_metas.clone());
         assert_eq!(Some(Ballot(5, 3)), replica.proposer.highest_observed_ballot());
         assert!(replica.proposer.state().is_follower());
         assert_eq!(&[Command::Proposal { payload: ("123".into())}], &replica.transport[3]);
@@ -573,18 +590,20 @@ mod tests {
     #[test]
     fn node_accepted() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        replica.proposal("123".into());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
+        replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
-        replica.promise(1, Ballot(0, 4), vec![]);
-        replica.promise(0, Ballot(0, 4), vec![]);
-        replica.promise(2, Ballot(0, 4), vec![]);
+        replica.promise(1, Ballot(0, 4), vec![], cmd_metas.clone());
+        replica.promise(0, Ballot(0, 4), vec![], cmd_metas.clone());
+        replica.promise(2, Ballot(0, 4), vec![], cmd_metas.clone());
         replica.transport.clear();
 
         // wait for phase 2 quorum (accepted) before sending resolution
-        replica.accepted(0, Ballot(0, 4), vec![0]);
+        replica.accepted(0, Ballot(0, 4), vec![0], cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
 
-        replica.accepted(2, Ballot(0, 4), vec![0]);
+        replica.accepted(2, Ballot(0, 4), vec![0], cmd_metas.clone());
         (0..4).for_each(|i| {
             assert_eq!(
                 &[Command::Resolution { payload: (Ballot(0, 4), vec![(0, "123".into())])}],
@@ -595,12 +614,12 @@ mod tests {
         assert_eq!(vec![(0, "123".into())], replica.window.decisions().iter().collect::<Vec<_>>());
 
         // allow multiple accepted slots
-        replica.proposal("foo".into());
-        replica.proposal("bar".into());
+        replica.proposal("foo".into(), cmd_metas.clone());
+        replica.proposal("bar".into(), cmd_metas.clone());
         replica.transport.clear();
-        replica.accepted(0, Ballot(0, 4), vec![1, 2]);
+        replica.accepted(0, Ballot(0, 4), vec![1, 2], cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
-        replica.accepted(1, Ballot(0, 4), vec![1, 2]);
+        replica.accepted(1, Ballot(0, 4), vec![1, 2], cmd_metas.clone());
 
         (0..4).for_each(|i| {
             assert_eq!(
@@ -615,12 +634,12 @@ mod tests {
         );
 
         // allow multiple accepts, but only when the slots receive quorum!
-        replica.proposal("foo2".into());
-        replica.proposal("bar2".into());
+        replica.proposal("foo2".into(), cmd_metas.clone());
+        replica.proposal("bar2".into(), cmd_metas.clone());
         replica.transport.clear();
-        replica.accepted(0, Ballot(0, 4), vec![3, 4]);
+        replica.accepted(0, Ballot(0, 4), vec![3, 4], cmd_metas.clone());
         (0..4).for_each(|i| assert!(replica.transport[i].is_empty()));
-        replica.accepted(1, Ballot(0, 4), vec![3]);
+        replica.accepted(1, Ballot(0, 4), vec![3], cmd_metas.clone());
 
         (0..4).for_each(|i| {
             assert_eq!(
@@ -638,8 +657,9 @@ mod tests {
     #[test]
     fn node_resolution() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
 
-        replica.resolution(Ballot(1, 2), vec![(4, "123".into())]);
+        replica.resolution(Ballot(1, 2), vec![(4, "123".into())], cmd_metas.clone());
         assert_eq!((0..5), replica.window.open_range());
         assert!(match replica.window.slot_mut(4) {
             SlotMutRef::Resolved(Ballot(1, 2), val) if val == "123" => true,
@@ -648,7 +668,7 @@ mod tests {
         assert_eq!(&[Command::Catchup { payload: (4, vec![0, 1, 2, 3])}], &replica.transport[2]);
         replica.transport.clear();
 
-        replica.resolution(Ballot(1, 2), vec![(1, Bytes::default()), (0, "000".into())]);
+        replica.resolution(Ballot(1, 2), vec![(1, Bytes::default()), (0, "000".into())], cmd_metas.clone());
         assert_eq!(
             vec![(0, "000".into()), (1, Bytes::default())],
             replica.window.decisions().iter().collect::<Vec<_>>()
@@ -657,7 +677,7 @@ mod tests {
         replica.transport.clear();
 
         // fill hole 1,2
-        replica.resolution(Ballot(1, 2), vec![(2, Bytes::default()), (3, "3".into())]);
+        replica.resolution(Ballot(1, 2), vec![(2, Bytes::default()), (3, "3".into())], cmd_metas.clone());
         assert!(replica.transport[2].is_empty());
 
         assert_eq!(
@@ -675,23 +695,27 @@ mod tests {
     #[test]
     fn node_is_leader() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         assert!(!replica.is_leader());
 
         let bal = replica.proposer.prepare();
         assert!(!replica.is_leader());
 
-        replica.promise(0, bal, vec![]);
+        replica.promise(0, bal, vec![], cmd_metas.clone());
         assert!(!replica.is_leader());
 
-        replica.promise(1, bal, vec![]);
+        replica.promise(1, bal, vec![], cmd_metas.clone());
         assert!(replica.is_leader());
     }
 
     #[test]
     fn node_propose_leadership_as_follower() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         assert!(!replica.is_leader());
-        replica.propose_leadership();
+        replica.propose_leadership(cmd_metas);
 
         (0..4).for_each(|i| assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[i]));
     }
@@ -699,25 +723,29 @@ mod tests {
     #[test]
     fn node_propose_leadership_as_candidate() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         assert!(!replica.is_leader());
-        replica.propose_leadership();
+        replica.propose_leadership(cmd_metas.clone());
         replica.transport.clear();
 
-        replica.propose_leadership();
+        replica.propose_leadership(cmd_metas.clone());
         (0..4).for_each(|i| assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[i]));
     }
 
     #[test]
     fn node_propose_leadership_as_leader() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         assert!(!replica.is_leader());
-        replica.propose_leadership();
-        replica.promise(0, Ballot(0, 4), vec![]);
-        replica.promise(1, Ballot(0, 4), vec![]);
+        replica.propose_leadership(cmd_metas.clone());
+        replica.promise(0, Ballot(0, 4), vec![], cmd_metas.clone());
+        replica.promise(1, Ballot(0, 4), vec![], cmd_metas.clone());
         assert!(replica.is_leader());
         replica.transport.clear();
 
-        replica.propose_leadership();
+        replica.propose_leadership(cmd_metas.clone());
         (0..4).for_each(|i| {
             assert_eq!(&[Command::Accept { payload: (Ballot(0, 4), vec![])}], &replica.transport[i])
         });
@@ -726,6 +754,8 @@ mod tests {
     #[test]
     fn node_catchup() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
+        let cmd_metas = CommandMetas { message_id: 1f64 };
+
         // put in some slots
         // 0, 1, 2 are resolved
         let resolved_slots = vec![
@@ -743,23 +773,23 @@ mod tests {
         }
 
         // replica that is not the leader cannot respond to catchup
-        replica.catchup(2, vec![0, 1, 2]);
+        replica.catchup(2, vec![0, 1, 2], cmd_metas.clone());
         assert!(replica.transport[2].is_empty());
 
         // make the replica the leader
         assert!(!replica.is_leader());
-        replica.propose_leadership();
-        (0..=1).for_each(|n| replica.promise(n, Ballot(0, 4), vec![]));
-        replica.promise(1, Ballot(0, 4), vec![]);
+        replica.propose_leadership(cmd_metas.clone());
+        (0..=1).for_each(|n| replica.promise(n, Ballot(0, 4), vec![], cmd_metas.clone()));
+        replica.promise(1, Ballot(0, 4), vec![], cmd_metas.clone());
         assert!(replica.is_leader());
         replica.transport.clear();
 
         // request catch up for non-closed slots
-        replica.catchup(2, vec![3, 4, 5]);
+        replica.catchup(2, vec![3, 4, 5], cmd_metas.clone());
         assert!(replica.transport[2].is_empty());
 
         // request catchup for open slots
-        replica.catchup(2, vec![0, 1, 2, 3]);
+        replica.catchup(2, vec![0, 1, 2, 3], cmd_metas.clone());
         assert_eq!(
             &[
                 Command::Resolution { payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])},
@@ -769,7 +799,7 @@ mod tests {
         );
 
         // resolutions must come in order
-        replica.catchup(0, vec![2, 0, 1, 3]);
+        replica.catchup(0, vec![2, 0, 1, 3], cmd_metas.clone());
         assert_eq!(
             &[
                 Command::Resolution { payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])},
@@ -779,7 +809,7 @@ mod tests {
         );
 
         // resolutions can contain holes
-        replica.catchup(3, vec![1, 2]);
+        replica.catchup(3, vec![1, 2], cmd_metas.clone());
         assert_eq!(
             &[
                 Command::Resolution { payload: (Ballot(0, 1), vec![(1, "456".into())])},
@@ -809,7 +839,7 @@ mod tests {
     }
 
     impl Transport for VecTransport {
-        fn send(&mut self, node: NodeId, _: &NodeMetadata, cmd: Command) {
+        fn send(&mut self, node: NodeId, _: &NodeMetadata, cmd: Command, cmd_metas: CommandMetas) {
             assert!(node < 4);
             self.0[node as usize].push(cmd);
         }

@@ -1,7 +1,7 @@
 use bincode::{deserialize, serialize};
 use bytes::Bytes;
 use hyper::{client::HttpConnector, Body, Client, Request};
-use paxos::{Command, NodeId, NodeMetadata, Receiver, Transport};
+use paxos::{Command, CommandMetas, NodeId, NodeMetadata, Receiver, Transport};
 
 pub struct HttpTransport {
     client: Client<HttpConnector, Body>,
@@ -14,7 +14,7 @@ impl Default for HttpTransport {
 }
 
 impl Transport for HttpTransport {
-    fn send(&mut self, _node: NodeId, meta: &NodeMetadata, cmd: Command) {
+    fn send(&mut self, _node: NodeId, meta: &NodeMetadata, cmd: Command, _cmd_metas: CommandMetas) {
         let bytes = match serialize(&cmd) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -34,5 +34,5 @@ pub fn invoke<C: Receiver>(replica: &mut C, command: Bytes) {
         Ok(cmd) => cmd,
         Err(_) => return,
     };
-    replica.receive(cmd);
+    replica.receive(cmd, CommandMetas { message_id: 1_f64 });
 }

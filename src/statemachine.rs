@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Command, Receiver},
+    commands::{Command, CommandMetas, Receiver},
     DecisionSet, Replica, Slot,
 };
 use bytes::Bytes;
@@ -40,15 +40,15 @@ impl<R: Replica, S: ReplicatedState> StateMachineReplica<R, S> {
 }
 
 impl<R: Replica, S: ReplicatedState> Receiver for StateMachineReplica<R, S> {
-    fn receive(&mut self, cmd: Command) {
-        self.inner.receive(cmd);
+    fn receive(&mut self, cmd: Command, cmd_metas: CommandMetas) {
+        self.inner.receive(cmd, cmd_metas);
         self.try_execute_slots();
     }
 }
 
 impl<R: Replica, S: ReplicatedState> Replica for StateMachineReplica<R, S> {
-    fn propose_leadership(&mut self) {
-        self.inner.propose_leadership();
+    fn propose_leadership(&mut self, cmd_metas: CommandMetas) {
+        self.inner.propose_leadership(cmd_metas);
     }
 
     fn is_leader(&self) -> bool {
@@ -59,8 +59,8 @@ impl<R: Replica, S: ReplicatedState> Replica for StateMachineReplica<R, S> {
         self.inner.decisions()
     }
 
-    fn tick(&mut self) {
-        self.inner.tick();
+    fn tick(&mut self, cmd_metas: CommandMetas) {
+        self.inner.tick(cmd_metas);
     }
 }
 
@@ -93,12 +93,13 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
+        let cmd_metas = CommandMetas { message_id: 1_f64 };
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();
 
         // does not happen again
-        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert!(replica.state_machine.0.is_empty());
 
         // fill hole in slot 2, freeing 3
@@ -112,7 +113,7 @@ mod tests {
                 .resolve(Ballot(1, 1), Bytes::default());
         }
 
-        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(3u64, Bytes::from("2"))], replica.state_machine.0);
     }
 
@@ -136,12 +137,13 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        replica.receive(Command::Accepted { payload: (0, Ballot(2, 2), vec![])});
+        let cmd_metas = CommandMetas { message_id: 1_f64 };
+        replica.receive(Command::Accepted { payload: (0, Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();
 
         // does not happen again
-        replica.receive(Command::Accepted { payload: (1, Ballot(2, 2), vec![])});
+        replica.receive(Command::Accepted { payload: (1, Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert!(replica.state_machine.0.is_empty());
 
         // fill hole in slot 2, freeing 3
@@ -155,7 +157,7 @@ mod tests {
                 .resolve(Ballot(1, 1), Bytes::default());
         }
 
-        replica.receive(Command::Accepted { payload: (2, Ballot(2, 2), vec![])});
+        replica.receive(Command::Accepted { payload: (2, Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(3u64, Bytes::from("2"))], replica.state_machine.0);
     }
 
@@ -169,11 +171,11 @@ mod tests {
 
     struct FakeReplica(SlotWindow);
     impl Receiver for FakeReplica {
-        fn receive(&mut self, _cmd: Command) {}
+        fn receive(&mut self, _cmd: Command, _cmd_metas: CommandMetas) {}
     }
 
     impl Replica for FakeReplica {
-        fn propose_leadership(&mut self) {
+        fn propose_leadership(&mut self, _cmd_metas: CommandMetas) {
             unimplemented!();
         }
 
@@ -181,7 +183,7 @@ mod tests {
             unimplemented!()
         }
 
-        fn tick(&mut self) {
+        fn tick(&mut self, cmd_metas: CommandMetas) {
             unimplemented!()
         }
 
