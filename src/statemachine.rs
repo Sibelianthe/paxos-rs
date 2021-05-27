@@ -93,7 +93,7 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        let cmd_metas = CommandMetas { message_id: 1_f64 };
+        let cmd_metas = CommandMetas("".into());
         replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();
@@ -137,7 +137,7 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        let cmd_metas = CommandMetas { message_id: 1_f64 };
+        let cmd_metas = CommandMetas("".into());
         replica.receive(Command::Accepted { payload: (0, Ballot(2, 2), vec![])}, cmd_metas.clone());
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();

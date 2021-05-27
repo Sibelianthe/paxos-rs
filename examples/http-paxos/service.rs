@@ -46,7 +46,7 @@ impl Handler {
             let mut ticks = interval(Duration::from_millis(100));
             loop {
                 ticks.tick().await;
-                replica_arch_timer.lock().await.tick(CommandMetas { message_id: 1_f64 });
+                replica_arch_timer.lock().await.tick(CommandMetas("".into()));
             }
         });
 
@@ -74,7 +74,7 @@ impl Handler {
                         Command::Proposal {
                             payload: KvCommand::Set { request_id, key, value }.into(),
                         },
-                        CommandMetas { message_id: 1_f64 },
+                        CommandMetas("".into()),
                     );
                 }
 
@@ -93,7 +93,7 @@ impl Handler {
                 {
                     self.replica.lock().await.receive(
                         Command::Proposal { payload: (KvCommand::Get { request_id, key }.into()) },
-                        CommandMetas { message_id: 1_f64 },
+                        CommandMetas("".into()),
                     );
                 }
 

@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn node_proposal() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1_f64 };
+        let cmd_metas = CommandMetas("".into());
 
         // sent with no existing proposal, kickstarts phase 1
         replica.proposal("123".into(), cmd_metas.clone());
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn node_proposal_redirection() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
         replica.prepare(Ballot(0, 3), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 3)), replica.proposer.highest_observed_ballot());
         replica.transport.clear();
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn node_prepare() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.prepare(Ballot(1, 0), cmd_metas.clone());
         assert_eq!(Some(Ballot(1, 0)), replica.proposer.highest_observed_ballot());
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn node_promise_without_existing_accepted_value() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn node_promise_with_existing_accepted_value() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn node_promise_with_slot_holes() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn node_accept() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.prepare(Ballot(8, 2), cmd_metas.clone());
         assert_eq!(Some(Ballot(8, 2)), replica.proposer.highest_observed_ballot());
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn node_reject() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn node_accepted() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn node_resolution() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         replica.resolution(Ballot(1, 2), vec![(4, "123".into())], cmd_metas.clone());
         assert_eq!((0..5), replica.window.open_range());
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn node_is_leader() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         assert!(!replica.is_leader());
 
@@ -712,7 +712,7 @@ mod tests {
     #[test]
     fn node_propose_leadership_as_follower() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         assert!(!replica.is_leader());
         replica.propose_leadership(cmd_metas);
@@ -723,7 +723,7 @@ mod tests {
     #[test]
     fn node_propose_leadership_as_candidate() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         assert!(!replica.is_leader());
         replica.propose_leadership(cmd_metas.clone());
@@ -736,7 +736,7 @@ mod tests {
     #[test]
     fn node_propose_leadership_as_leader() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         assert!(!replica.is_leader());
         replica.propose_leadership(cmd_metas.clone());
@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn node_catchup() {
         let mut replica = Node::new(VecTransport::default(), CONFIG.clone());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         // put in some slots
         // 0, 1, 2 are resolved

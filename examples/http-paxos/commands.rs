@@ -34,5 +34,5 @@ pub fn invoke<C: Receiver>(replica: &mut C, command: Bytes) {
         Ok(cmd) => cmd,
         Err(_) => return,
     };
-    replica.receive(cmd, CommandMetas { message_id: 1_f64 });
+    replica.receive(cmd, CommandMetas("".into()));
 }

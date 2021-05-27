@@ -169,9 +169,7 @@ pub enum Command {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandMetas {
-    pub message_id: f64,
-}
+pub struct CommandMetas(pub Bytes);
 
 #[cfg(test)]
 mod tests {

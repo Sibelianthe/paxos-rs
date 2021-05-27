@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn propose_does_not_bump_timeout() {
         let mut live = Liveness::new(Inner::default());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         live.receive(Command::Proposal { payload: ("123".into())}, cmd_metas);
 
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn commands_bump_timeout() {
         let mut live = Liveness::new(Inner::default());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         live.receive(Command::Prepare { payload: (Ballot(2, 3))}, cmd_metas.clone());
         assert!(live.leader_election.latest_message.is_some());
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn tick_leader() {
         let mut live = Liveness::new(Inner::default());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         live.inner.leader = true;
         assert!(live.is_leader());
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn tick_follower() {
         let mut live = Liveness::new(Inner::default());
-        let cmd_metas = CommandMetas { message_id: 1f64 };
+        let cmd_metas = CommandMetas("".into());
 
         live.inner.leader = false;
         assert!(!live.is_leader());
