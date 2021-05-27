@@ -70,9 +70,9 @@ impl Handler {
                 let request_id = random();
                 let receiver = self.store.register_set(request_id);
                 {
-                    self.replica.lock().await.receive(Command::Proposal(
+                    self.replica.lock().await.receive(Command::Proposal { payload: 
                         KvCommand::Set { request_id, key, value }.into(),
-                    ));
+                    });
                 }
 
                 match receiver.await {
@@ -91,7 +91,7 @@ impl Handler {
                     self.replica
                         .lock()
                         .await
-                        .receive(Command::Proposal(KvCommand::Get { request_id, key }.into()));
+                        .receive(Command::Proposal { payload: (KvCommand::Get { request_id, key }.into())});
                 }
 
                 match receiver.await {

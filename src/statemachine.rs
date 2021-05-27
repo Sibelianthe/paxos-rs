@@ -93,12 +93,12 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        replica.receive(Command::Resolution(Ballot(2, 2), vec![]));
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();
 
         // does not happen again
-        replica.receive(Command::Resolution(Ballot(2, 2), vec![]));
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
         assert!(replica.state_machine.0.is_empty());
 
         // fill hole in slot 2, freeing 3
@@ -112,7 +112,7 @@ mod tests {
                 .resolve(Ballot(1, 1), Bytes::default());
         }
 
-        replica.receive(Command::Resolution(Ballot(2, 2), vec![]));
+        replica.receive(Command::Resolution { payload: (Ballot(2, 2), vec![])});
         assert_eq!(vec![(3u64, Bytes::from("2"))], replica.state_machine.0);
     }
 
@@ -136,12 +136,12 @@ mod tests {
         }
 
         let mut replica = StateMachineReplica::new(inner_replica, VecStateMachine::default());
-        replica.receive(Command::Accepted(0, Ballot(2, 2), vec![]));
+        replica.receive(Command::Accepted { payload: (0, Ballot(2, 2), vec![])});
         assert_eq!(vec![(0u64, Bytes::from("0")), (1, Bytes::from("1"))], replica.state_machine.0);
         replica.state_machine.0.clear();
 
         // does not happen again
-        replica.receive(Command::Accepted(1, Ballot(2, 2), vec![]));
+        replica.receive(Command::Accepted { payload: (1, Ballot(2, 2), vec![])});
         assert!(replica.state_machine.0.is_empty());
 
         // fill hole in slot 2, freeing 3
@@ -155,7 +155,7 @@ mod tests {
                 .resolve(Ballot(1, 1), Bytes::default());
         }
 
-        replica.receive(Command::Accepted(2, Ballot(2, 2), vec![]));
+        replica.receive(Command::Accepted { payload: (2, Ballot(2, 2), vec![])});
         assert_eq!(vec![(3u64, Bytes::from("2"))], replica.state_machine.0);
     }
 

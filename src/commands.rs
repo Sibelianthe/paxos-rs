@@ -59,28 +59,28 @@ pub trait Commander {
 impl<T: Commander> Receiver for T {
     fn receive(&mut self, command: Command) {
         match command {
-            Command::Proposal(val) => {
+            Command::Proposal { payload: val } => {
                 self.proposal(val);
             }
-            Command::Prepare(bal) => {
+            Command::Prepare { payload: bal } => {
                 self.prepare(bal);
             }
-            Command::Promise(node, bal, accepted) => {
+            Command::Promise { payload: (node, bal, accepted)} => {
                 self.promise(node, bal, accepted);
             }
-            Command::Accept(bal, slot_vals) => {
+            Command::Accept { payload: (bal, slot_vals)} => {
                 self.accept(bal, slot_vals);
             }
-            Command::Reject(node, proposed, preempted) => {
+            Command::Reject { payload: (node, proposed, preempted)} => {
                 self.reject(node, proposed, preempted);
             }
-            Command::Accepted(node, bal, slots) => {
+            Command::Accepted { payload: (node, bal, slots)} => {
                 self.accepted(node, bal, slots);
             }
-            Command::Resolution(bal, slot_vals) => {
+            Command::Resolution { payload: (bal, slot_vals)} => {
                 self.resolution(bal, slot_vals);
             }
-            Command::Catchup(node, slots) => {
+            Command::Catchup { payload: (node, slots)} => {
                 self.catchup(node, slots);
             }
         }
@@ -89,7 +89,7 @@ impl<T: Commander> Receiver for T {
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 /// RPC commands sent between replicas
-pub enum Command {
+pub enum OrigCommand {
     /// Propose a value
     Proposal(Bytes),
 
@@ -130,7 +130,7 @@ pub enum Command {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 /// RPC commands sent between replicas
 #[serde(tag = "messageName")]
-pub enum TestCommand {
+pub enum Command {
     /// Propose a value
     Proposal { payload: Bytes },
 
@@ -175,7 +175,7 @@ mod tests {
     fn it_serializes_command_proposal() {
         let json = r#"{"messageName":"Proposal","payload":[]}"#;
 
-        let command = TestCommand::Proposal { payload: "".into() };
+        let command = Command::Proposal { payload: "".into() };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -185,7 +185,7 @@ mod tests {
         let json = r#"{"messageName":"Prepare","payload":[123,345]}"#;
         let ballot = Ballot(123_u32, 345_u32);
 
-        let command = TestCommand::Prepare { payload: ballot };
+        let command = Command::Prepare { payload: ballot };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -196,7 +196,7 @@ mod tests {
         let v = vec![(0u64, Ballot(123_u32, 345_u32), "hello".into())];
         let payload = (42, Ballot(123_u32, 345_u32), v);
 
-        let command = TestCommand::Promise { payload };
+        let command = Command::Promise { payload };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -207,7 +207,7 @@ mod tests {
         let v = vec![(0u64, "hello".into())];
         let payload = (Ballot(123_u32, 345_u32), v);
 
-        let command = TestCommand::Accept { payload };
+        let command = Command::Accept { payload };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -217,7 +217,7 @@ mod tests {
         let json = r#"{"messageName":"Reject","payload":[13,[123,345],[123,345]]}"#;
         let ballot = Ballot(123_u32, 345_u32);
 
-        let command = TestCommand::Reject { payload: (13, ballot, ballot) };
+        let command = Command::Reject { payload: (13, ballot, ballot) };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -228,7 +228,7 @@ mod tests {
         let v = vec![15_u64];
         let ballot = Ballot(123_u32, 345_u32);
 
-        let command = TestCommand::Accepted { payload: (13, ballot, v) };
+        let command = Command::Accepted { payload: (13, ballot, v) };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -239,7 +239,7 @@ mod tests {
         let v = vec![(15_u64, "".into())];
         let ballot = Ballot(123_u32, 345_u32);
 
-        let command = TestCommand::Resolution { payload: (ballot, v) };
+        let command = Command::Resolution { payload: (ballot, v) };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
@@ -249,7 +249,7 @@ mod tests {
         let json = r#"{"messageName":"Catchup","payload":[16,[444]]}"#;
         let v = vec![444_u64];
 
-        let command = TestCommand::Catchup { payload: (16, v) };
+        let command = Command::Catchup { payload: (16, v) };
         let serialized_command = serde_json::to_string(&command).unwrap();
         assert_eq!(&serialized_command, json);
     }
