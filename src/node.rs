@@ -73,7 +73,7 @@ impl<T: Transport> Node<T> {
 
         // send out the accepts
         if !accepts.is_empty() {
-            self.broadcast(Command::Accept { payload: (bal, accepts)}, cmd_metas);
+            self.broadcast(Command::Accept { payload: (bal, accepts) }, cmd_metas);
         }
     }
 
@@ -86,7 +86,7 @@ impl<T: Transport> Node<T> {
         let proposals = self.proposer.take_proposals();
         if let Some(Ballot(_, node)) = self.proposer.highest_observed_ballot() {
             for proposal in proposals.into_iter() {
-                self.send(node, Command::Proposal { payload: (proposal)}, cmd_metas.clone());
+                self.send(node, Command::Proposal { payload: (proposal) }, cmd_metas.clone());
             }
         }
     }
@@ -115,7 +115,7 @@ impl<T: Transport> Commander for Node<T> {
             }
             ProposerState::Follower => {
                 let leader_node = self.proposer.highest_observed_ballot().unwrap().1;
-                self.send(leader_node, Command::Proposal { payload: (val)}, cmd_metas);
+                self.send(leader_node, Command::Proposal { payload: (val) }, cmd_metas);
             }
             ProposerState::Candidate { .. } => {
                 // still waiting for promises, queue up the value
@@ -129,7 +129,10 @@ impl<T: Transport> Commander for Node<T> {
                     slot_ref.acceptor().notice_value(bal, val.clone());
                     slot_ref.slot()
                 };
-                self.broadcast(Command::Accept { payload: (bal, vec![(slot, val.clone())])}, cmd_metas);
+                self.broadcast(
+                    Command::Accept { payload: (bal, vec![(slot, val.clone())]) },
+                    cmd_metas,
+                );
             }
         }
     }
@@ -153,7 +156,7 @@ impl<T: Transport> Commander for Node<T> {
                             self.transport.send(
                                 node,
                                 &self.config[node],
-                                Command::Reject { payload: (node_id, proposed, preempted)},
+                                Command::Reject { payload: (node_id, proposed, preempted) },
                                 cmd_metas,
                             );
                             return;
@@ -174,10 +177,16 @@ impl<T: Transport> Commander for Node<T> {
                 }
             }
         }
-        self.send(bal.1, Command::Promise { payload: (node_id, bal, accepted)}, cmd_metas);
+        self.send(bal.1, Command::Promise { payload: (node_id, bal, accepted) }, cmd_metas);
     }
 
-    fn promise(&mut self, node: NodeId, bal: Ballot, accepted: Vec<(Slot, Ballot, Bytes)>, cmd_metas: CommandMetas) {
+    fn promise(
+        &mut self,
+        node: NodeId,
+        bal: Ballot,
+        accepted: Vec<(Slot, Ballot, Bytes)>,
+        cmd_metas: CommandMetas,
+    ) {
         if !self.proposer.state().is_candidate() {
             return;
         }
@@ -224,19 +233,31 @@ impl<T: Transport> Commander for Node<T> {
                     accepted_slots.push(slot);
                 }
                 AcceptResponse::Reject { proposed, preempted } => {
-                    self.send(bal.1, Command::Reject { payload: (current_node, proposed, preempted)}, 
-                    cmd_metas,
-                );
+                    self.send(
+                        bal.1,
+                        Command::Reject { payload: (current_node, proposed, preempted) },
+                        cmd_metas,
+                    );
                     return;
                 }
                 _ => {}
             }
         }
 
-        self.send(bal.1, Command::Accepted { payload: (current_node, bal, accepted_slots)}, cmd_metas);
+        self.send(
+            bal.1,
+            Command::Accepted { payload: (current_node, bal, accepted_slots) },
+            cmd_metas,
+        );
     }
 
-    fn reject(&mut self, node: NodeId, proposed: Ballot, promised: Ballot, cmd_metas: CommandMetas) {
+    fn reject(
+        &mut self,
+        node: NodeId,
+        proposed: Ballot,
+        promised: Ballot,
+        cmd_metas: CommandMetas,
+    ) {
         // reject preempted ballot within the proposer
         self.proposer.receive_reject(node, proposed, promised);
         self.forward(cmd_metas);
@@ -266,7 +287,7 @@ impl<T: Transport> Commander for Node<T> {
 
         if !resolutions.is_empty() {
             resolutions.shrink_to_fit();
-            self.broadcast(Command::Resolution { payload: (bal, resolutions)}, cmd_metas);
+            self.broadcast(Command::Resolution { payload: (bal, resolutions) }, cmd_metas);
         }
     }
 
@@ -298,7 +319,7 @@ impl<T: Transport> Commander for Node<T> {
             trace!("Sending catchup for slots {:?}", slots);
             let leader = self.proposer.highest_observed_ballot().unwrap().1;
             let node = self.config.current();
-            self.send(leader, Command::Catchup { payload: (node, slots)}, cmd_metas);
+            self.send(leader, Command::Catchup { payload: (node, slots) }, cmd_metas);
         }
     }
 
@@ -323,7 +344,7 @@ impl<T: Transport> Commander for Node<T> {
                         self.transport.send(
                             node,
                             &self.config[node],
-                            Command::Resolution { payload: (b, send_buf)},
+                            Command::Resolution { payload: (b, send_buf) },
                             cmd_metas.clone(),
                         );
                     }
@@ -335,7 +356,7 @@ impl<T: Transport> Commander for Node<T> {
         }
 
         if !buf.is_empty() && run_bal.is_some() {
-            self.send(node, Command::Resolution { payload: (run_bal.unwrap(), buf)}, cmd_metas);
+            self.send(node, Command::Resolution { payload: (run_bal.unwrap(), buf) }, cmd_metas);
         }
     }
 }
@@ -343,14 +364,16 @@ impl<T: Transport> Commander for Node<T> {
 impl<T: Transport> Replica for Node<T> {
     fn propose_leadership(&mut self, cmd_metas: CommandMetas) {
         match *self.proposer.state() {
-            ProposerState::Candidate { proposal, .. } => self.broadcast(Command::Prepare { payload: (proposal)}, cmd_metas),
+            ProposerState::Candidate { proposal, .. } => {
+                self.broadcast(Command::Prepare { payload: (proposal) }, cmd_metas)
+            }
             ProposerState::Follower => {
                 let bal = self.proposer.prepare();
-                self.broadcast(Command::Prepare { payload: (bal)}, cmd_metas);
+                self.broadcast(Command::Prepare { payload: (bal) }, cmd_metas);
             }
             ProposerState::Leader { proposal } => {
                 // TODO: do we want a special sync here? What about periodic bumping ballot?
-                self.broadcast(Command::Accept { payload: (proposal, vec![])}, cmd_metas);
+                self.broadcast(Command::Accept { payload: (proposal, vec![]) }, cmd_metas);
             }
         }
     }
@@ -392,10 +415,10 @@ mod tests {
         // sent with no existing proposal, kickstarts phase 1
         replica.proposal("123".into(), cmd_metas.clone());
         assert_eq!(Some(Ballot(0, 4)), replica.proposer.highest_observed_ballot());
-        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[0]);
-        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[1]);
-        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[2]);
-        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[3]);
+        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[0]);
+        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[1]);
+        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[2]);
+        assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[3]);
         replica.transport.clear();
 
         replica.proposal("456".into(), cmd_metas.clone());
@@ -420,7 +443,7 @@ mod tests {
         assert!(replica.transport[0].is_empty());
         assert!(replica.transport[1].is_empty());
         assert!(replica.transport[2].is_empty());
-        assert_eq!(&[Command::Proposal { payload: ("123".into())}], &replica.transport[3]);
+        assert_eq!(&[Command::Proposal { payload: ("123".into()) }], &replica.transport[3]);
 
         assert!(replica.window.decisions().is_empty());
     }
@@ -432,7 +455,10 @@ mod tests {
 
         replica.prepare(Ballot(1, 0), cmd_metas.clone());
         assert_eq!(Some(Ballot(1, 0)), replica.proposer.highest_observed_ballot());
-        assert_eq!(&[Command::Promise { payload: (4, Ballot(1, 0), Vec::new())}], &replica.transport[0]);
+        assert_eq!(
+            &[Command::Promise { payload: (4, Ballot(1, 0), Vec::new()) }],
+            &replica.transport[0]
+        );
         assert!(&replica.transport[1].is_empty());
         assert!(&replica.transport[2].is_empty());
         assert!(&replica.transport[3].is_empty());
@@ -442,7 +468,10 @@ mod tests {
         assert_eq!(Some(Ballot(1, 0)), replica.proposer.highest_observed_ballot());
         assert!(&replica.transport[0].is_empty());
         assert!(&replica.transport[1].is_empty());
-        assert_eq!(&[Command::Reject { payload: (4, Ballot(0, 2), Ballot(1, 0))}], &replica.transport[2]);
+        assert_eq!(
+            &[Command::Reject { payload: (4, Ballot(0, 2), Ballot(1, 0)) }],
+            &replica.transport[2]
+        );
         assert!(&replica.transport[3].is_empty());
 
         assert!(replica.window.decisions().is_empty());
@@ -465,7 +494,7 @@ mod tests {
 
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Accept { payload: (Ballot(0, 4), vec![(0, "123".into())])}],
+                &[Command::Accept { payload: (Ballot(0, 4), vec![(0, "123".into())]) }],
                 &replica.transport[i]
             )
         });
@@ -490,7 +519,9 @@ mod tests {
 
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Accept { payload: (Ballot(0, 4), vec![(0, "456".into()), (1, "123".into())])}],
+                &[Command::Accept {
+                    payload: (Ballot(0, 4), vec![(0, "456".into()), (1, "123".into())])
+                }],
                 &replica.transport[i]
             )
         });
@@ -515,15 +546,17 @@ mod tests {
 
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Accept { payload: (
-                    Ballot(0, 4),
-                    vec![
-                        (0, Bytes::default()),
-                        (1, Bytes::default()),
-                        (2, "456".into()),
-                        (3, "123".into())
-                    ]
-                )}],
+                &[Command::Accept {
+                    payload: (
+                        Ballot(0, 4),
+                        vec![
+                            (0, Bytes::default()),
+                            (1, Bytes::default()),
+                            (2, "456".into()),
+                            (3, "123".into())
+                        ]
+                    )
+                }],
                 &replica.transport[i]
             );
         });
@@ -542,29 +575,45 @@ mod tests {
 
         // test rejection first for bal < proposer.highest_observed_ballot
         replica.accept(Ballot(1, 1), vec![(0, "123".into())], cmd_metas.clone());
-        assert_eq!(&[Command::Reject { payload: (4, Ballot(1, 1), Ballot(8, 2))}], &replica.transport[1]);
+        assert_eq!(
+            &[Command::Reject { payload: (4, Ballot(1, 1), Ballot(8, 2)) }],
+            &replica.transport[1]
+        );
         replica.transport.clear();
 
         // test replying with accepted message when bal =
         // proposer.highest_observed_ballot
         replica.accept(Ballot(8, 2), vec![(0, "456".into())], cmd_metas.clone());
         assert_eq!(Some(Ballot(8, 2)), replica.proposer.highest_observed_ballot());
-        assert_eq!(&[Command::Accepted { payload: (4, Ballot(8, 2), vec![0])}], &replica.transport[2]);
+        assert_eq!(
+            &[Command::Accepted { payload: (4, Ballot(8, 2), vec![0]) }],
+            &replica.transport[2]
+        );
         replica.transport.clear();
 
         // test replying with accepted message when bal >
         // proposer.highest_observed_ballot
         replica.accept(Ballot(9, 2), vec![(0, "789".into())], cmd_metas.clone());
         assert_eq!(Some(Ballot(9, 2)), replica.proposer.highest_observed_ballot());
-        assert_eq!(&[Command::Accepted { payload: (4, Ballot(9, 2), vec![0])}], &replica.transport[2]);
+        assert_eq!(
+            &[Command::Accepted { payload: (4, Ballot(9, 2), vec![0]) }],
+            &replica.transport[2]
+        );
 
         assert!(replica.window.decisions().is_empty());
         replica.transport.clear();
 
         // try with multiple accepts
-        replica.accept(Ballot(10, 2), vec![(1, "foo".into()), (2, "bar".into())], cmd_metas.clone());
+        replica.accept(
+            Ballot(10, 2),
+            vec![(1, "foo".into()), (2, "bar".into())],
+            cmd_metas.clone(),
+        );
         assert_eq!(Some(Ballot(10, 2)), replica.proposer.highest_observed_ballot());
-        assert_eq!(&[Command::Accepted { payload: (4, Ballot(10, 2), vec![1, 2])}], &replica.transport[2]);
+        assert_eq!(
+            &[Command::Accepted { payload: (4, Ballot(10, 2), vec![1, 2]) }],
+            &replica.transport[2]
+        );
     }
 
     #[test]
@@ -579,7 +628,7 @@ mod tests {
         replica.reject(2, Ballot(0, 4), Ballot(5, 3), cmd_metas.clone());
         assert_eq!(Some(Ballot(5, 3)), replica.proposer.highest_observed_ballot());
         assert!(replica.proposer.state().is_follower());
-        assert_eq!(&[Command::Proposal { payload: ("123".into())}], &replica.transport[3]);
+        assert_eq!(&[Command::Proposal { payload: ("123".into()) }], &replica.transport[3]);
         (0..3).for_each(|i| assert!(replica.transport[i].is_empty()));
 
         assert!(replica.window.decisions().is_empty());
@@ -604,7 +653,7 @@ mod tests {
         replica.accepted(2, Ballot(0, 4), vec![0], cmd_metas.clone());
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Resolution { payload: (Ballot(0, 4), vec![(0, "123".into())])}],
+                &[Command::Resolution { payload: (Ballot(0, 4), vec![(0, "123".into())]) }],
                 &replica.transport[i]
             )
         });
@@ -621,7 +670,9 @@ mod tests {
 
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Resolution { payload: (Ballot(0, 4), vec![(1, "foo".into()), (2, "bar".into())])}],
+                &[Command::Resolution {
+                    payload: (Ballot(0, 4), vec![(1, "foo".into()), (2, "bar".into())])
+                }],
                 &replica.transport[i]
             )
         });
@@ -641,7 +692,7 @@ mod tests {
 
         (0..4).for_each(|i| {
             assert_eq!(
-                &[Command::Resolution { payload: (Ballot(0, 4), vec![(3, "foo2".into())])}],
+                &[Command::Resolution { payload: (Ballot(0, 4), vec![(3, "foo2".into())]) }],
                 &replica.transport[i]
             )
         });
@@ -663,19 +714,27 @@ mod tests {
             SlotMutRef::Resolved(Ballot(1, 2), val) if val == "123" => true,
             _ => false,
         });
-        assert_eq!(&[Command::Catchup { payload: (4, vec![0, 1, 2, 3])}], &replica.transport[2]);
+        assert_eq!(&[Command::Catchup { payload: (4, vec![0, 1, 2, 3]) }], &replica.transport[2]);
         replica.transport.clear();
 
-        replica.resolution(Ballot(1, 2), vec![(1, Bytes::default()), (0, "000".into())], cmd_metas.clone());
+        replica.resolution(
+            Ballot(1, 2),
+            vec![(1, Bytes::default()), (0, "000".into())],
+            cmd_metas.clone(),
+        );
         assert_eq!(
             vec![(0, "000".into()), (1, Bytes::default())],
             replica.window.decisions().iter().collect::<Vec<_>>()
         );
-        assert_eq!(&[Command::Catchup { payload: (4, vec![2, 3])}], &replica.transport[2]);
+        assert_eq!(&[Command::Catchup { payload: (4, vec![2, 3]) }], &replica.transport[2]);
         replica.transport.clear();
 
         // fill hole 1,2
-        replica.resolution(Ballot(1, 2), vec![(2, Bytes::default()), (3, "3".into())], cmd_metas.clone());
+        replica.resolution(
+            Ballot(1, 2),
+            vec![(2, Bytes::default()), (3, "3".into())],
+            cmd_metas.clone(),
+        );
         assert!(replica.transport[2].is_empty());
 
         assert_eq!(
@@ -715,7 +774,9 @@ mod tests {
         assert!(!replica.is_leader());
         replica.propose_leadership(cmd_metas);
 
-        (0..4).for_each(|i| assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[i]));
+        (0..4).for_each(|i| {
+            assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[i])
+        });
     }
 
     #[test]
@@ -728,7 +789,9 @@ mod tests {
         replica.transport.clear();
 
         replica.propose_leadership(cmd_metas.clone());
-        (0..4).for_each(|i| assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4))}], &replica.transport[i]));
+        (0..4).for_each(|i| {
+            assert_eq!(&[Command::Prepare { payload: (Ballot(0, 4)) }], &replica.transport[i])
+        });
     }
 
     #[test]
@@ -745,7 +808,10 @@ mod tests {
 
         replica.propose_leadership(cmd_metas.clone());
         (0..4).for_each(|i| {
-            assert_eq!(&[Command::Accept { payload: (Ballot(0, 4), vec![])}], &replica.transport[i])
+            assert_eq!(
+                &[Command::Accept { payload: (Ballot(0, 4), vec![]) }],
+                &replica.transport[i]
+            )
         });
     }
 
@@ -790,8 +856,10 @@ mod tests {
         replica.catchup(2, vec![0, 1, 2, 3], cmd_metas.clone());
         assert_eq!(
             &[
-                Command::Resolution { payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])},
-                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())])}
+                Command::Resolution {
+                    payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])
+                },
+                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())]) }
             ],
             &replica.transport[2]
         );
@@ -800,8 +868,10 @@ mod tests {
         replica.catchup(0, vec![2, 0, 1, 3], cmd_metas.clone());
         assert_eq!(
             &[
-                Command::Resolution { payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])},
-                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())])}
+                Command::Resolution {
+                    payload: (Ballot(0, 1), vec![(0, "123".into()), (1, "456".into())])
+                },
+                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())]) }
             ],
             &replica.transport[0]
         );
@@ -810,8 +880,8 @@ mod tests {
         replica.catchup(3, vec![1, 2], cmd_metas.clone());
         assert_eq!(
             &[
-                Command::Resolution { payload: (Ballot(0, 1), vec![(1, "456".into())])},
-                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())])}
+                Command::Resolution { payload: (Ballot(0, 1), vec![(1, "456".into())]) },
+                Command::Resolution { payload: (Ballot(2, 1), vec![(2, "abc".into())]) }
             ],
             &replica.transport[3]
         );
