@@ -58,10 +58,6 @@ impl<R: Replica, S: ReplicatedState> Replica for StateMachineReplica<R, S> {
     fn decisions(&self) -> DecisionSet {
         self.inner.decisions()
     }
-
-    fn tick(&mut self, cmd_metas: CommandMetas) {
-        self.inner.tick(cmd_metas);
-    }
 }
 
 #[cfg(test)]
@@ -180,10 +176,6 @@ mod tests {
         }
 
         fn is_leader(&self) -> bool {
-            unimplemented!()
-        }
-
-        fn tick(&mut self, cmd_metas: CommandMetas) {
             unimplemented!()
         }
 

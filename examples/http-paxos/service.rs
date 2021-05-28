@@ -4,18 +4,16 @@ use crate::{
     kvstore::{KeyValueStore, KvCommand},
 };
 use bytes::Bytes;
-use futures_util::future::{join, Join};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use paxos::{
-    liveness::Liveness, statemachine::StateMachineReplica, Command, CommandMetas, Configuration,
-    Node, Receiver, Replica,
+    statemachine::StateMachineReplica, Command, CommandMetas, Configuration, Node, Receiver,
+    Replica,
 };
 use rand::random;
 use std::{sync::Arc, time::Duration};
 use tokio::{self, sync::Mutex, task::JoinHandle, time::interval};
 
-type PaxosReplica = StateMachineReplica<Liveness<Node<HttpTransport>>, KeyValueStore>;
-pub type TimerHandles = Join<JoinHandle<()>, JoinHandle<()>>;
+type PaxosReplica = StateMachineReplica<Node<HttpTransport>, KeyValueStore>;
 
 #[derive(Clone)]
 pub struct Handler {
@@ -26,12 +24,11 @@ pub struct Handler {
 impl Handler {
     pub fn new(config: Configuration) -> Handler {
         let store = KeyValueStore::default();
-        let replica =
-            Node::new(HttpTransport::default(), config).liveness().state_machine(store.clone());
+        let replica = Node::new(HttpTransport::default(), config).state_machine(store.clone());
         Handler { replica: Arc::new(Mutex::new(replica)), store }
     }
 
-    pub fn spawn_timers(&self) -> TimerHandles {
+    pub fn spawn_timers(&self) -> JoinHandle<()> {
         let store = self.store.clone();
         let listener_cleanup = tokio::spawn(async move {
             let mut ticks = interval(Duration::new(30, 0));
@@ -41,16 +38,7 @@ impl Handler {
             }
         });
 
-        let replica_arch_timer = self.replica.clone();
-        let liveness_tick = tokio::spawn(async move {
-            let mut ticks = interval(Duration::from_millis(100));
-            loop {
-                ticks.tick().await;
-                replica_arch_timer.lock().await.tick(CommandMetas("".into()));
-            }
-        });
-
-        join(listener_cleanup, liveness_tick)
+        listener_cleanup
     }
 
     pub async fn handle(&self, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {

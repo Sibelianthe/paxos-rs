@@ -359,8 +359,6 @@ impl<T: Transport> Replica for Node<T> {
         self.proposer.state().is_leader()
     }
 
-    fn tick(&mut self, _cmd_metas: CommandMetas) {}
-
     fn decisions(&self) -> DecisionSet {
         self.window.decisions()
     }

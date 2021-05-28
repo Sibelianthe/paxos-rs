@@ -31,7 +31,6 @@ extern crate lazy_static;
 mod acceptor;
 pub mod commands;
 mod config;
-pub mod liveness;
 mod node;
 mod proposer;
 pub mod statemachine;
@@ -39,7 +38,7 @@ mod window;
 
 use std::cmp;
 
-pub use commands::{Command, Receiver, Transport, CommandMetas};
+pub use commands::{Command, CommandMetas, Receiver, Transport};
 pub use config::{Configuration, NodeMetadata};
 pub use node::Node;
 use serde::{Deserialize, Serialize};
@@ -95,18 +94,6 @@ pub trait Replica: Receiver {
 
     /// Resolved slots within the replica
     fn decisions(&self) -> DecisionSet;
-
-    /// Runs logic for a tick of an interval
-    fn tick(&mut self, cmd_metas: CommandMetas);
-
-    /// Configures the replica to re-establish leadership upon
-    /// failure.
-    fn liveness(self) -> liveness::Liveness<Self>
-    where
-        Self: Sized,
-    {
-        liveness::Liveness::new(self)
-    }
 
     /// Configures the replica to use a custom state machine to apply decisions
     fn state_machine<R: ReplicatedState>(
