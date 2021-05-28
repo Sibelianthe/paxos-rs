@@ -907,7 +907,7 @@ mod tests {
     }
 
     impl Transport for VecTransport {
-        fn send(&mut self, node: NodeId, _: &NodeMetadata, cmd: Command, cmd_metas: CommandMetas) {
+        fn send(&mut self, node: NodeId, _: &NodeMetadata, cmd: Command, _cmd_metas: CommandMetas) {
             assert!(node < 4);
             self.0[node as usize].push(cmd);
         }
