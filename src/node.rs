@@ -108,14 +108,11 @@ impl<T: Transport> Commander for Node<T> {
     fn proposal(&mut self, val: Bytes, cmd_metas: CommandMetas) {
         // redirect to the distinguished proposer or start PREPARE
         match *self.proposer.state() {
-            ProposerState::Follower if self.proposer.highest_observed_ballot().is_none() => {
-                // no known proposers, go through prepare cycle
+            ProposerState::Follower => {
+                // we don't care if there's a leader already,
+                // we'll go through the 2 phases everytime
                 self.proposer.push_proposal(val);
                 self.propose_leadership(cmd_metas);
-            }
-            ProposerState::Follower => {
-                let leader_node = self.proposer.highest_observed_ballot().unwrap().1;
-                self.send(leader_node, Command::Proposal { payload: (val) }, cmd_metas);
             }
             ProposerState::Candidate { .. } => {
                 // still waiting for promises, queue up the value
